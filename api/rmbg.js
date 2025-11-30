@@ -1,7 +1,6 @@
 import { client as gradioClient } from "@gradio/client";
 import fs from "fs/promises";
 import path from "path";
-import fetch from "node-fetch";
 
 export const config = { api: { bodyParser: false } };
 
@@ -31,9 +30,10 @@ export default async function handler(req, res) {
     const outputFile = result.data[0]; // { name: 'output.png', url: 'https://...' }
     if (!outputFile?.url) throw new Error("No URL returned from Gradio API");
 
-    // --- 5. Download processed image ---
+    // --- 5. Download processed image using built-in fetch ---
     const response = await fetch(outputFile.url);
-    const processedBuffer = Buffer.from(await response.arrayBuffer());
+    const arrayBuffer = await response.arrayBuffer();
+    const processedBuffer = Buffer.from(arrayBuffer);
 
     // Save processed image to /tmp (optional)
     const outputPath = path.join("/tmp", `output_${timestamp}.png`);
