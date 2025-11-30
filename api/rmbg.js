@@ -1,6 +1,5 @@
-import Client from "@gradio/client";
+import { Client } from "@gradio/client"; // Named import
 
-// Disable body parsing for binary upload
 export const config = {
   api: {
     bodyParser: false,
@@ -25,27 +24,24 @@ export default async function handler(req, res) {
     // --- 1. Read raw binary uploaded via curl ---
     const buffer = await getRawBody(req);
 
-    // --- 2. Convert buffer to Blob (Gradio requires Blob/File/Buffer) ---
+    // --- 2. Convert buffer to Blob ---
     const blob = new Blob([buffer], { type: "image/png" });
 
-    // --- 3. Connect to Gradio Space ---
-    const client = await Client.connect(
-      "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/"
-    );
+    // --- 3. Instantiate Gradio Client ---
+    const client = new Client("https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/");
+    await client.ready?.(); // Optional: wait for client to be ready if supported
 
-    // --- 4. Send image to Gradio for background removal ---
-    const result = await client.predict("/predict", {
-      image: blob,
-    });
+    // --- 4. Send image to Gradio ---
+    const result = await client.predict("/predict", { image: blob });
 
-    // --- 5. Get output file (PNG) ---
+    // --- 5. Get output file ---
     const file = result.data[1];
 
-    // --- 6. Download output from file.url ---
+    // --- 6. Download output ---
     const imgResp = await fetch(file.url);
     const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
 
-    // --- 7. Return image to cURL client ---
+    // --- 7. Return image ---
     res.setHeader("Content-Type", "image/png");
     res.send(imgBuffer);
   } catch (err) {
