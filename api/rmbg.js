@@ -1,4 +1,7 @@
-import { Client } from "@gradio/client";
+// OLD:
+// import { Client } from "@gradio/client";
+// NEW:
+import { client } from "@gradio/client";
 
 export const config = {
   api: {
@@ -12,38 +15,63 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --- 1. Read raw binary uploaded via curl ---
+    // --- 1. Read binary body (curl --data-binary) ---
     const chunks = [];
-    req.on("data", chunk => chunks.push(chunk));
+    req.on("data", c => chunks.push(c));
+
     req.on("end", async () => {
       const buffer = Buffer.concat(chunks);
 
-      // Create a Blob because gradio client requires Blob/File/Buffer
+      // Convert to Blob for Gradio client
       const blob = new Blob([buffer], { type: "image/png" });
 
-      // --- 2. Connect to Gradio Space ---
-      const client = await Client.connect("briaai/BRIA-RMBG-2.0");
+      // --- 2. Connect using new API syntax ---
+      const app = await client(
+        "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/"
+      );
 
-      // --- 3. Send image to real server ---
-      const result = await client.predict("/image", {
-        image: blob,
-      });
+      // --- 3. Call the /predict endpoint (new params format) ---
+      const result = await app.predict("/predict", [
+        blob   // 'image' Image input
+      ]);
 
-      // result.data[1] is output file (PNG)
-      const file = result.data[1];
+      // result.data is an array of outputs
+      // result.data[0] → output image (base64 or blob)
+      // result.data[1] → sometimes file object (depends on Space)
 
-      // --- 4. Download output from file.url ---
-      const img = await fetch(file.url);
-      const imgBuffer = Buffer.from(await img.arrayBuffer());
+      const output = result.data[0];
 
-      // --- 5. Return image back to cURL client ---
+      // The output may come as:
+      // - a direct Blob
+      // - {url: "..."} file reference
+      // - base64 string
+
+      let bufferOut;
+
+      if (output instanceof Blob) {
+        // Direct Blob output
+        bufferOut = Buffer.from(await output.arrayBuffer());
+      } else if (output.url) {
+        // File-like object { url: "…" }
+        const dl = await fetch(output.url);
+        bufferOut = Buffer.from(await dl.arrayBuffer());
+      } else if (typeof output === "string" && output.startsWith("data:image")) {
+        // Base64 data URL
+        const base64 = output.split(",")[1];
+        bufferOut = Buffer.from(base64, "base64");
+      } else {
+        return res
+          .status(500)
+          .json({ error: "Unknown output format from Gradio Space" });
+      }
+
+      // --- 4. Send PNG back to cURL client ---
       res.setHeader("Content-Type", "image/png");
-      res.send(imgBuffer);
+      res.send(bufferOut);
     });
 
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: e.toString() });
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ error: err.toString() });
   }
 }
-
