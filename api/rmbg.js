@@ -1,4 +1,5 @@
-import { client as gradioClient } from "@gradio/client";
+import fetch from "node-fetch"; // if needed, otherwise Node 18+ has fetch built-in
+import FormData from "form-data";
 
 export const config = { api: { bodyParser: false } };
 
@@ -6,45 +7,35 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    // --- 1. Receive client image ---
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const buffer = Buffer.concat(chunks);
 
-    // --- 2. Connect to Gradio API ---
-    const blob = new Blob([buffer], { type: "image/png" });
-    const app = await gradioClient(
-      "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/"
+    // --- 1. Prepare FormData ---
+    const form = new FormData();
+    form.append("data[]", buffer, {
+      filename: "input.png",
+      contentType: "image/png",
+    });
+
+    // --- 2. Send to Gradio predict ---
+    const response = await fetch(
+      "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/predict",
+      {
+        method: "POST",
+        body: form,
+      }
     );
 
-    // --- 3. Send image to /predict endpoint ---
-    const result = await app.predict("/predict", [blob]);
+    const json = await response.json();
 
-    // --- 4. Handle output ---
-    const output = result.data[0];
+    // --- 3. Get base64 output ---
+    const base64 = json.data[0]; // should be 'data:image/png;base64,...'
+    const imgBuffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ""), "base64");
 
-    let processedBuffer;
-
-    if (typeof output === "string") {
-      // base64 string (some environments)
-      processedBuffer = Buffer.from(
-        output.replace(/^data:image\/\w+;base64,/, ""),
-        "base64"
-      );
-    } else if (output instanceof Blob) {
-      // Blob-like (Node.js)
-      const arrayBuffer = await output.arrayBuffer();
-      processedBuffer = Buffer.from(arrayBuffer);
-    } else if (output.buffer) {
-      // Node.js File object
-      processedBuffer = Buffer.from(output.buffer);
-    } else {
-      throw new Error("Unexpected output format from Gradio API");
-    }
-
-    // --- 5. Return processed image ---
+    // --- 4. Send processed image ---
     res.setHeader("Content-Type", "image/png");
-    res.send(processedBuffer);
+    res.send(imgBuffer);
 
   } catch (e) {
     console.error(e);
