@@ -7,9 +7,6 @@
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/rmbg.py"
-    }
+    { "src": "/api/(.*)", "dest": "/api/rmbg.py" }
   ]
 }
