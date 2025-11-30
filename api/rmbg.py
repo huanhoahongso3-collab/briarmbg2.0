@@ -5,16 +5,16 @@ GRADIO_SPACE = "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/"
 
 def handler(request):
     """
-    Vercel Python serverless handler.
-    Must return: (bytes, status_code, headers)
+    Pure Vercel Python serverless function.
+    Returns: (bytes, status_code, headers)
     """
     try:
-        # 1. Read raw binary data
+        # 1. Read raw binary upload
         img_bytes = request.data
         if not img_bytes:
             return {"error": "No data received"}, 400
 
-        # 2. Connect to BRIA-RMBG-1.4 Space
+        # 2. Connect to Gradio Space
         client = Client(GRADIO_SPACE)
 
         # 3. Send image to /predict
@@ -23,12 +23,12 @@ def handler(request):
         if not isinstance(result_path, str):
             return {"error": "Unexpected result type", "result": str(result_path)}, 500
 
-        # 4. Download output file
+        # 4. Download output to buffer
         output_buffer = BytesIO()
         client.download(result_path, output_buffer)
         output_buffer.seek(0)
 
-        # 5. Return PNG bytes with proper header
+        # 5. Return PNG bytes
         return output_buffer.getvalue(), 200, {"Content-Type": "image/png"}
 
     except Exception as e:
