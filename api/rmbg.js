@@ -1,4 +1,4 @@
-import fetch from "node-fetch"; // if needed, otherwise Node 18+ has fetch built-in
+// import fetch from "node-fetch"; // if needed, otherwise Node 18+ has fetch built-in
 import FormData from "form-data";
 
 export const config = { api: { bodyParser: false } };
