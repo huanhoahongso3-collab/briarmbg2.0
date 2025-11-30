@@ -1,4 +1,4 @@
-import { Client } from "@gradio/client"; // Named import
+import { Client } from "@gradio/client";
 
 export const config = {
   api: {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     // --- 3. Instantiate Gradio Client ---
     const client = new Client("https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/");
-    await client.ready?.(); // Optional: wait for client to be ready if supported
+    await client.ready?.();
 
     // --- 4. Send image to Gradio ---
     const result = await client.predict("/predict", { image: blob });
