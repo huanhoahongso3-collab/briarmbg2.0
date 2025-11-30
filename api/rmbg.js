@@ -1,6 +1,7 @@
 import { client as gradioClient } from "@gradio/client";
 import fs from "fs/promises";
 import path from "path";
+import fetch from "node-fetch";
 
 export const config = { api: { bodyParser: false } };
 
@@ -26,33 +27,23 @@ export default async function handler(req, res) {
 
     const result = await app.predict("/predict", [blob]);
 
-    // --- 4. Save processed image to /tmp ---
-    const outputData = result.data[0];
+    // --- 4. Get the URL of processed image ---
+    const outputFile = result.data[0]; // { name: 'output.png', url: 'https://...' }
+    if (!outputFile?.url) throw new Error("No URL returned from Gradio API");
 
-    // In Node.js, @gradio/client may return either string (base64) or object with 'name' & 'buffer'
-    let processedBuffer;
+    // --- 5. Download processed image ---
+    const response = await fetch(outputFile.url);
+    const processedBuffer = Buffer.from(await response.arrayBuffer());
 
-    if (typeof outputData === "string") {
-      // base64 string
-      processedBuffer = Buffer.from(
-        outputData.replace(/^data:image\/\w+;base64,/, ""),
-        "base64"
-      );
-    } else if (outputData.buffer) {
-      // Node.js Blob/File-like object
-      processedBuffer = Buffer.from(outputData.buffer);
-    } else {
-      throw new Error("Unexpected output format from Gradio API");
-    }
-
+    // Save processed image to /tmp (optional)
     const outputPath = path.join("/tmp", `output_${timestamp}.png`);
     await fs.writeFile(outputPath, processedBuffer);
 
-    // --- 5. Return processed image to client ---
+    // --- 6. Send processed image back to client ---
     res.setHeader("Content-Type", "image/png");
     res.send(processedBuffer);
 
-    // --- 6. Clean up files (optional, but good practice) ---
+    // --- 7. Clean up ---
     await fs.unlink(inputPath);
     await fs.unlink(outputPath);
 
