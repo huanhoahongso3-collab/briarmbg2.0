@@ -1,4 +1,6 @@
-import { client } from "@gradio/client";
+import fetch from "node-fetch"; // or global fetch in Node 20+
+import FormData from "form-data";
+import fs from "fs";
 
 export const config = {
   api: {
@@ -6,61 +8,51 @@ export const config = {
   }
 };
 
-// Helper: read raw body from request
-function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-}
-
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "POST only" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    // --- 1. Read image from curl --
-    const buffer = await readRawBody(req);
-    const blob = new Blob([buffer], { type: "image/png" });
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
 
-    // --- 2. Connect to the Gradio replica ---
-    const app = await client("https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/");
+    // --- Create multipart form data ---
+    const form = new FormData();
+    form.append("data", buffer, { filename: "input.png", contentType: "image/png" });
 
-    // --- 3. Predict ---
-    // Send image as the first element in array
-    const result = await app.predict("/predict", [blob]);
+    // --- Send request to Gradio Space directly ---
+    const response = await fetch(
+      "https://briaai-bria-rmbg-1-4.hf.space/--api/predict/",
+      {
+        method: "POST",
+        body: form
+      }
+    );
 
-    const output = result.data?.[0];
+    const json = await response.json();
 
-    if (!output) {
-      return res.status(502).json({ error: "No output from Gradio Space", detail: result });
-    }
+    // Check the returned data
+    const output = json?.data?.[0];
 
-    let imgBuffer;
+    if (!output) return res.status(502).json({ error: "No output", json });
 
-    // Case A: data URL (data:image/png;base64,...)
+    // If output is a data URL
     if (typeof output === "string" && output.startsWith("data:image")) {
       const base64 = output.split(",")[1];
-      imgBuffer = Buffer.from(base64, "base64");
+      const imgBuffer = Buffer.from(base64, "base64");
       res.setHeader("Content-Type", "image/png");
       return res.send(imgBuffer);
     }
 
-    // Case B: plain base64 string (rare)
+    // If output is a plain base64 string
     if (typeof output === "string" && /^[A-Za-z0-9+/=]+$/.test(output)) {
-      imgBuffer = Buffer.from(output, "base64");
+      const imgBuffer = Buffer.from(output, "base64");
       res.setHeader("Content-Type", "image/png");
       return res.send(imgBuffer);
     }
 
-    // Case C: unknown / object with url=null
-    return res.status(500).json({
-      error: "Cannot handle file object with url=null in JS client. Use Python client or return public URL.",
-      output
-    });
+    // Otherwise, return JSON for debugging
+    return res.status(500).json({ error: "Cannot handle output", output });
 
   } catch (err) {
     console.error(err);
