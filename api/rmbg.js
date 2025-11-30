@@ -1,10 +1,20 @@
-import { Client } from "@gradio/client";
+import Client from "@gradio/client";
 
+// Disable body parsing for binary upload
 export const config = {
   api: {
-    bodyParser: false
-  }
+    bodyParser: false,
+  },
 };
+
+// Helper to read raw request body
+async function getRawBody(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -13,36 +23,33 @@ export default async function handler(req, res) {
 
   try {
     // --- 1. Read raw binary uploaded via curl ---
-    const chunks = [];
-    req.on("data", chunk => chunks.push(chunk));
-    req.on("end", async () => {
-      const buffer = Buffer.concat(chunks);
+    const buffer = await getRawBody(req);
 
-      // Create a Blob because gradio client requires Blob/File/Buffer
-      const blob = new Blob([buffer], { type: "image/png" });
+    // --- 2. Convert buffer to Blob (Gradio requires Blob/File/Buffer) ---
+    const blob = new Blob([buffer], { type: "image/png" });
 
-      // --- 2. Connect to Gradio Space ---
-      const client = await Client("https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/");
+    // --- 3. Connect to Gradio Space ---
+    const client = await Client.connect(
+      "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/"
+    );
 
-      // --- 3. Send image to real server ---
-      const result = await client.predict("/predict", {
-        image: blob,
-      });
-
-      // result.data[1] is output file (PNG)
-      const file = result.data[1];
-
-      // --- 4. Download output from file.url ---
-      const img = await fetch(file.url);
-      const imgBuffer = Buffer.from(await img.arrayBuffer());
-
-      // --- 5. Return image back to cURL client ---
-      res.setHeader("Content-Type", "image/png");
-      res.send(imgBuffer);
+    // --- 4. Send image to Gradio for background removal ---
+    const result = await client.predict("/predict", {
+      image: blob,
     });
 
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: e.toString() });
+    // --- 5. Get output file (PNG) ---
+    const file = result.data[1];
+
+    // --- 6. Download output from file.url ---
+    const imgResp = await fetch(file.url);
+    const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+
+    // --- 7. Return image to cURL client ---
+    res.setHeader("Content-Type", "image/png");
+    res.send(imgBuffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.toString() });
   }
 }
