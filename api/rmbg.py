@@ -12,7 +12,7 @@ def rmbg():
         return jsonify({"error": "POST only"}), 405
 
     try:
-        # --- 1. Read raw binary robustly ---
+        # --- 1. Read raw binary upload ---
         img_bytes = request.get_data()
         if not img_bytes:
             return jsonify({"error": "No data received"}), 400
@@ -21,18 +21,17 @@ def rmbg():
         client = Client(GRADIO_SPACE)
 
         # --- 3. Send image to /predict ---
-        result = client.predict(BytesIO(img_bytes), api_name="/predict")
+        result_path = client.predict(BytesIO(img_bytes), api_name="/predict")
 
-        # --- 4. Ensure result is string path ---
-        if not isinstance(result, str):
-            return jsonify({"error": "Unexpected result type", "result": str(result)}), 500
+        if not isinstance(result_path, str):
+            return jsonify({"error": "Unexpected result type", "result": str(result_path)}), 500
 
-        # --- 5. Download output from Space ---
+        # --- 4. Download output from Space ---
         output_buffer = BytesIO()
-        client.download(result, output_buffer)
+        client.download(result_path, output_buffer)
         output_buffer.seek(0)
 
-        # --- 6. Return PNG to client ---
+        # --- 5. Return PNG to client ---
         return send_file(output_buffer, mimetype="image/png", as_attachment=False)
 
     except Exception as e:
