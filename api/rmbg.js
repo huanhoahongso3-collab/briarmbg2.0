@@ -22,10 +22,10 @@ export default async function handler(req, res) {
       const blob = new Blob([buffer], { type: "image/png" });
 
       // --- 2. Connect to Gradio Space ---
-      const client = await Client.connect("briaai/BRIA-RMBG-2.0");
+      const client = await Client.connect("briaai/BRIA-RMBG-1.4");
 
       // --- 3. Send image to real server ---
-      const result = await client.predict("/image", {
+      const result = await client.predict("/predict", {
         image: blob,
       });
 
