@@ -9,7 +9,7 @@ def handler(request):
     """
     try:
         # --- 1. Read raw binary ---
-        img_bytes = request.get_data()
+        img_bytes = request.data  # Vercel passes raw body in request.data
         if not img_bytes:
             return {"error": "No data received"}, 400
 
@@ -27,7 +27,7 @@ def handler(request):
         client.download(result_path, output_buffer)
         output_buffer.seek(0)
 
-        # --- 5. Return PNG as raw bytes with headers ---
+        # --- 5. Return PNG as raw bytes ---
         return output_buffer.getvalue(), 200, {"Content-Type": "image/png"}
 
     except Exception as e:
