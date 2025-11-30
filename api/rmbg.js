@@ -1,7 +1,6 @@
-// OLD:
-// import { Client } from "@gradio/client";
-// NEW:
+// api/rmbg.js
 import { client } from "@gradio/client";
+import { fetch as undiciFetch } from "undici"; // optional, but safer for Node 20 on Vercel
 
 export const config = {
   api: {
@@ -9,69 +8,88 @@ export const config = {
   }
 };
 
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "POST only" });
+    res.status(405).json({ error: "POST only" });
+    return;
   }
 
   try {
-    // --- 1. Read binary body (curl --data-binary) ---
-    const chunks = [];
-    req.on("data", c => chunks.push(c));
+    // 1) read binary from curl --data-binary
+    const buffer = await readRawBody(req);
 
-    req.on("end", async () => {
-      const buffer = Buffer.concat(chunks);
+    // create a Blob for gradio client (works in Node >= 18)
+    const blob = new Blob([buffer], { type: "image/png" });
 
-      // Convert to Blob for Gradio client
-      const blob = new Blob([buffer], { type: "image/png" });
+    // 2) connect to the exact replica URL you provided
+    const app = await client("https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/");
 
-      // --- 2. Connect using new API syntax ---
-      const app = await client(
-        "https://briaai-bria-rmbg-1-4.hf.space/--replicas/sc92z/"
-      );
+    // 3) call /predict with the image blob as position 0 input (array)
+    const result = await app.predict("/predict", [blob]);
 
-      // --- 3. Call the /predict endpoint (new params format) ---
-      const result = await app.predict("/predict", [
-        blob   // 'image' Image input
-      ]);
+    // 4) result.data[0] is expected to be a string (per your Return Type)
+    const out = result?.data?.[0];
 
-      // result.data is an array of outputs
-      // result.data[0] → output image (base64 or blob)
-      // result.data[1] → sometimes file object (depends on Space)
+    if (!out) {
+      console.error("No output from Gradio:", result);
+      return res.status(502).json({ error: "No output from Gradio Space", detail: result });
+    }
 
-      const output = result.data[0];
+    let finalBuffer;
+    // Case A: data URL (data:image/png;base64,...)
+    if (typeof out === "string" && out.startsWith("data:")) {
+      const parts = out.split(",");
+      const meta = parts[0]; // e.g. data:image/png;base64
+      const b64 = parts[1] || "";
+      finalBuffer = Buffer.from(b64, "base64");
+      // set content-type from meta if possible
+      const mime = meta.split(";")[0].split(":")[1] || "image/png";
+      res.setHeader("Content-Type", mime);
+      return res.send(finalBuffer);
+    }
 
-      // The output may come as:
-      // - a direct Blob
-      // - {url: "..."} file reference
-      // - base64 string
-
-      let bufferOut;
-
-      if (output instanceof Blob) {
-        // Direct Blob output
-        bufferOut = Buffer.from(await output.arrayBuffer());
-      } else if (output.url) {
-        // File-like object { url: "…" }
-        const dl = await fetch(output.url);
-        bufferOut = Buffer.from(await dl.arrayBuffer());
-      } else if (typeof output === "string" && output.startsWith("data:image")) {
-        // Base64 data URL
-        const base64 = output.split(",")[1];
-        bufferOut = Buffer.from(base64, "base64");
-      } else {
-        return res
-          .status(500)
-          .json({ error: "Unknown output format from Gradio Space" });
-      }
-
-      // --- 4. Send PNG back to cURL client ---
+    // Case B: plain base64 string (no data: prefix)
+    if (typeof out === "string" && /^[A-Za-z0-9+/=]+$/.test(out)) {
+      finalBuffer = Buffer.from(out, "base64");
       res.setHeader("Content-Type", "image/png");
-      res.send(bufferOut);
-    });
+      return res.send(finalBuffer);
+    }
+
+    // Case C: it's an object with a url field or an HTTP(S) url string
+    if (typeof out === "object" && out.url) {
+      const dl = await undiciFetch(out.url);
+      if (!dl.ok) throw new Error(`Failed to download output: ${dl.status}`);
+      const arr = await dl.arrayBuffer();
+      finalBuffer = Buffer.from(arr);
+      res.setHeader("Content-Type", dl.headers.get("content-type") || "image/png");
+      return res.send(finalBuffer);
+    }
+
+    if (typeof out === "string" && (out.startsWith("http://") || out.startsWith("https://"))) {
+      const dl = await undiciFetch(out);
+      if (!dl.ok) throw new Error(`Failed to download output: ${dl.status}`);
+      const arr = await dl.arrayBuffer();
+      finalBuffer = Buffer.from(arr);
+      res.setHeader("Content-Type", dl.headers.get("content-type") || "image/png");
+      return res.send(finalBuffer);
+    }
+
+    // Unknown format fallback: return JSON for debugging
+    console.error("Unknown output format:", out);
+    return res.status(500).json({ error: "Unknown output format from Gradio Space", output: out });
 
   } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ error: err.toString() });
+    console.error("Handler error:", err);
+    // Return text/plain for easier debugging via curl
+    res.status(500).json({ error: err?.toString?.() ?? String(err) });
   }
 }
