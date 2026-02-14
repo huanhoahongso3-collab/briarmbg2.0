@@ -6,60 +6,124 @@
     <title>BRIA RMBG 2.0 – cURL API Usage</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            padding: 30px;
-            max-width: 800px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 40px 20px;
+            max-width: 850px;
             margin: auto;
             line-height: 1.6;
-            background: #f7f7f7;
-        }
-        code {
-            background: #eee;
-            padding: 6px 12px;
-            display: block;
-            white-space: pre-wrap;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        .box {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            background: #f0f2f5;
+            color: #333;
         }
         h1 {
             text-align: center;
+            color: #1a1a1a;
+            margin-bottom: 30px;
+        }
+        .box {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        h2, h3 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        code {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px;
+            display: block;
+            white-space: pre-wrap;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            border-left: 5px solid #61dafb;
+        }
+        .model-notice {
+            background: #fff9e6;
+            border: 1px solid #ffe58f;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        .model-notice-content p {
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+        }
+        .hf-link {
+            display: inline-flex;
+            align-items: center;
+            background: #1a1a1a;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .hf-link:hover {
+            background: #333;
+        }
+        .hf-emoji {
+            margin-right: 8px;
+        }
+        a {
+            color: #007bff;
+        }
+        strong {
+            color: #000;
         }
     </style>
 </head>
 <body>
 
-<h1>BRIA RMBG 2.0 – Image Background Removal API</h1>
+    <h1>BRIA RMBG 2.0 – Background Removal</h1>
 
-<div class="box">
-    <h2>How to Use</h2>
-    <p>You can upload an image using <strong>cURL</strong> from any device or script.  
-    The serverless proxy will forward the image to the BRIA RMBG 2.0 model and return the processed PNG.</p>
+    <div class="box">
+        <h2>API Usage Guide</h2>
+        <p>You can remove image backgrounds programmatically using <strong>cURL</strong>. This serverless endpoint processes your image through the BRIA RMBG 2.0 model and returns a transparent PNG.</p>
 
-    <h3>Example command:</h3>
+        <h3>Example cURL Command</h3>
+        <code id="curl"></code>
 
-    <code id="curl"></code>
+        <p><strong>Instructions:</strong></p>
+        <ul>
+            <li>Replace <code>input.png</code> with the path to your local image.</li>
+            <li>The processed image will be saved locally as <code>output.png</code>.</li>
+            <li>Ensure your image does not exceed the server's payload limit.</li>
+        </ul>
+    </div>
 
-    <p>Replace <code>input.png</code> with your own image file.  
-    The result will be saved as <code>output.png</code>.</p>
-</div>
+    <div class="box">
+        <div class="model-notice">
+            <div class="model-notice-content">
+                <h3>Model Information</h3>
+                <p>This API is powered by <strong>BRIA RMBG 2.0</strong>, a state-of-the-art background removal model developed by <strong>Bria AI</strong>. It is specifically trained for enterprise-grade accuracy on diverse complex subjects.</p>
+                <p>For technical documentation, licensing, or to try the interactive demo, visit the official Hugging Face space:</p>
+                
+                <a href="https://huggingface.co/spaces/briaai/BRIA-RMBG-2.0" target="_blank" class="hf-link">
+                    <span class="hf-emoji">🤗</span> View Original Model on Hugging Face
+                </a>
+            </div>
+        </div>
+    </div>
 
-<script>
-    const endpoint = window.location.origin + "/api/rmbg";
-    document.getElementById("curl").innerText =
+    <script>
+        const endpoint = window.location.origin + "/api/rmbg";
+        document.getElementById("curl").innerText =
 `curl -X POST \\
   -H "Content-Type: application/octet-stream" \\
   --data-binary @input.png \\
   ${endpoint} \\
   --output output.png`;
-</script>
+    </script>
 
 </body>
 </html>
