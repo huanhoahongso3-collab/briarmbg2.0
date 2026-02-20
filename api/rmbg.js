@@ -2,17 +2,16 @@ import { Client } from "@gradio/client";
 
 export const config = {
   api: {
-    bodyParser: false // Required to handle raw binary data via cURL
+    bodyParser: false
   }
 };
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Only POST requests are allowed" });
+    return res.status(405).json({ error: "POST only" });
   }
 
   try {
-    // 1. Collect the raw binary data from the request stream
     const buffer = await new Promise((resolve, reject) => {
       const chunks = [];
       req.on("data", (chunk) => chunks.push(chunk));
@@ -20,42 +19,45 @@ export default async function handler(req, res) {
       req.on("error", reject);
     });
 
-    if (buffer.length === 0) {
-      return res.status(400).json({ error: "No image data received" });
-    }
-
-    // 2. Connect to the specific v1.4 replica
+    // 1. Connect to the specific 1.4 replica
     const app = await Client.connect("https://briaai-bria-rmbg-1-4.hf.space/--replicas/bpgvg/");
 
-    // 3. Convert Buffer to Blob (Gradio v1.4 expectation)
+    // 2. Convert to Blob
     const imageBlob = new Blob([buffer], { type: "image/png" });
 
-    // 4. Call the /predict endpoint with the positional array
+    // 3. Predict using the positional array [image]
     const result = await app.predict("/predict", [
       imageBlob, 
     ]);
 
-    // 5. Handle the output (v1.4 returns the file object in data[0])
-    const outputData = result.data[0];
+    // 4. Robust Output Detection
+    // Some Gradio versions return result.data[0].url, others result.data[0].path
+    const outputField = result.data[0];
+    const imageUrl = outputField?.url || outputField?.path || (typeof outputField === 'string' ? outputField : null);
 
-    if (outputData && outputData.url) {
-      // 6. Fetch the result from the Gradio temporary storage
-      const imageResponse = await fetch(outputData.url);
+    if (imageUrl) {
+      // 5. Fetch the result
+      // If it's a relative path, Gradio Client usually prefixes it, but we check here
+      const finalUrl = imageUrl.startsWith('http') ? imageUrl : `https://briaai-bria-rmbg-1-4.hf.space/file=${imageUrl}`;
+      
+      const imageResponse = await fetch(finalUrl);
       const imageArrayBuffer = await imageResponse.arrayBuffer();
-      const finalBuffer = Buffer.from(imageArrayBuffer);
 
-      // 7. Send the binary image back to the user
       res.setHeader("Content-Type", "image/png");
-      res.status(200).send(finalBuffer);
+      return res.status(200).send(Buffer.from(imageArrayBuffer));
     } else {
-      throw new Error("Model failed to return an image URL.");
+      // Log the actual structure to your server console so you can see what the API sent back
+      console.log("Unexpected API Response Structure:", JSON.stringify(result.data));
+      throw new Error("No image URL or path found in model response.");
     }
 
   } catch (err) {
-    console.error("Gradio v1.4 Error:", err);
+    console.error("Worker Error:", err);
     res.status(500).json({ 
       error: "Background removal failed", 
-      message: err.message 
+      message: err.message,
+      // Useful for debugging:
+      stage: "prediction_or_parsing"
     });
   }
 }
