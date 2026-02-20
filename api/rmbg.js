@@ -12,52 +12,37 @@ export default async function handler(req, res) {
   }
 
   try {
-    const buffer = await new Promise((resolve, reject) => {
-      const chunks = [];
-      req.on("data", (chunk) => chunks.push(chunk));
-      req.on("end", () => resolve(Buffer.concat(chunks)));
-      req.on("error", reject);
-    });
+    // --- 1. Read raw binary uploaded via curl ---
+    const chunks = [];
+    req.on("data", chunk => chunks.push(chunk));
+    req.on("end", async () => {
+      const buffer = Buffer.concat(chunks);
 
-    // 1. Connect to the specific 1.4 replica
-    const app = await Client.connect("https://briaai-bria-rmbg-1-4.hf.space/--replicas/bpgvg/");
+      // Create a Blob because gradio client requires Blob/File/Buffer
+      const blob = new Blob([buffer], { type: "image/png" });
 
-    // 2. Convert to Blob
-    const imageBlob = new Blob([buffer], { type: "image/png" });
+      // --- 2. Connect to Gradio Space ---
+      const client = await Client.connect("briaai/BRIA-RMBG-2.0");
 
-    // 3. Predict using the positional array [image]
-    const result = await app.predict("/predict", [
-      imageBlob, 
-    ]);
+      // --- 3. Send image to real server ---
+      const result = await client.predict("/image", {
+        image: blob,
+      });
 
-    // 4. Robust Output Detection
-    // Some Gradio versions return result.data[0].url, others result.data[0].path
-    const outputField = result.data[0];
-    const imageUrl = outputField?.url || outputField?.path || (typeof outputField === 'string' ? outputField : null);
+      // result.data[1] is output file (PNG)
+      const file = result.data[1];
 
-    if (imageUrl) {
-      // 5. Fetch the result
-      // If it's a relative path, Gradio Client usually prefixes it, but we check here
-      const finalUrl = imageUrl.startsWith('http') ? imageUrl : `https://briaai-bria-rmbg-1-4.hf.space/file=${imageUrl}`;
-      
-      const imageResponse = await fetch(finalUrl);
-      const imageArrayBuffer = await imageResponse.arrayBuffer();
+      // --- 4. Download output from file.url ---
+      const img = await fetch(file.url);
+      const imgBuffer = Buffer.from(await img.arrayBuffer());
 
+      // --- 5. Return image back to cURL client ---
       res.setHeader("Content-Type", "image/png");
-      return res.status(200).send(Buffer.from(imageArrayBuffer));
-    } else {
-      // Log the actual structure to your server console so you can see what the API sent back
-      console.log("Unexpected API Response Structure:", JSON.stringify(result.data));
-      throw new Error("No image URL or path found in model response.");
-    }
-
-  } catch (err) {
-    console.error("Worker Error:", err);
-    res.status(500).json({ 
-      error: "Background removal failed", 
-      message: err.message,
-      // Useful for debugging:
-      stage: "prediction_or_parsing"
+      res.send(imgBuffer);
     });
+
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: e.toString() });
   }
 }
