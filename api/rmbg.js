@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     const imgResponse = await fetch(file.url);
     const finalBuffer = Buffer.from(await imgResponse.arrayBuffer());
 
-    await delay(2000); // Wait another 2 seconds
+    await delay(5000); // Wait another 2 seconds
 
     // 4. Send response
     res.setHeader("Content-Type", "image/png");
