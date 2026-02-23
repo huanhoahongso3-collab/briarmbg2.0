@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     for await (const chunk of req) { chunks.push(chunk); }
     const buffer = Buffer.concat(chunks);
     
-    await delay(2000); // Wait 2 seconds
+    await delay(7000); // Wait 2 seconds
 
     // 2. AI Processing
     const client = await Client.connect("briaai/BRIA-RMBG-2.0");
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     const imgResponse = await fetch(file.url);
     const finalBuffer = Buffer.from(await imgResponse.arrayBuffer());
 
-    await delay(5000); // Wait another 2 seconds
+    await delay(7000); // Wait another 2 seconds
 
     // 4. Send response
     res.setHeader("Content-Type", "image/png");
